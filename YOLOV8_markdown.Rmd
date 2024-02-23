@@ -1,0 +1,239 @@
+---
+title: "YOLOV8"
+author: "Prithvi Bagul"
+date: "2024-02-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+# Set the working directory to a specific path
+setwd("D:/NICMAR Project/DSPS24")
+```
+
+
+```{python}
+from ultralytics import YOLO
+```
+
+```{python}
+import os,shutil
+import torch
+import pandas as pd
+from skimage import io, transform
+import numpy as np
+import matplotlib.pyplot as plt
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms, utils
+from pathlib import Path
+from PIL import Image
+# Ignore warnings
+import warnings
+from tqdm import tqdm
+warnings.filterwarnings("ignore")
+
+plt.ion()   # interactive mode
+```
+
+```{python}
+class pavement_data(Dataset):
+    def __init__(self, root_dir, csv_path):
+        self.root = Path(root_dir)
+
+        self.df = pd.read_csv(os.path.join(root_dir,csv_path))
+        self.df = self.df.sample(frac=1)
+        self.image_names = [os.path.join(self.root,'train',i) for i in self.df['image_name'].values]
+        self.pci_label = list(self.df['pci'].values)
+
+    def __len__(self):
+        # returns the length of the dataset
+        return len(self.image_names)
+
+    def __getitem__(self, idx):
+
+    #     # preprocess and transformations
+    #     # indexes the dataset such that dataset[i] can retrieve the ith sample.
+        image = self.image_names[idx]
+        # print (image)
+        if os.path.isfile(image):
+            image_data = io.imread(image)
+            # print (image_data)
+
+            label = self.pci_label[idx]
+
+            sample = {'image': image_data, 'image_path':image,'label': label}
+
+            return sample
+```
+
+```{python}
+pavement_dataset = pavement_data('D:/NICMAR Project/DSPS24','train.csv')
+```
+
+```{python}
+for idx, sample in enumerate(pavement_dataset):
+    print (sample['image'].shape, sample['label'])
+
+    if idx == 5:
+        break
+```
+
+```{python}
+
+class prep_data(object):
+  def __init__(self,root_dir,csv_path):
+    self.root = Path(root_dir)
+    self.df = pd.read_csv(os.path.join(root_dir,csv_path))
+    self.image_names = [os.path.join(self.root,'train',i) for i in self.df['image_name'].values]
+    self.pci_label = list(self.df['pci'].values)
+    self.train_folder = os.path.join(root_dir,'yolov8','train')
+    self.val_folder = os.path.join(root_dir,'yolov8','val')
+    Path(self.train_folder).mkdir(parents=True, exist_ok=True)
+    Path(self.val_folder).mkdir(parents=True, exist_ok=True)
+
+  def __call__(self,sample):
+    if not sample is None:
+      image, img_path, labels = sample['image'],sample['image_path'], sample['label']
+      # print (img_path)
+      # print (labels)
+      dst_folder = os.path.join(self.train_folder,str(labels))
+      Path(dst_folder).mkdir(parents=True, exist_ok=True)
+      fname = os.path.basename(img_path)
+      if not os.path.isfile(os.path.join(dst_folder,fname)):
+        shutil.copy2(img_path,dst_folder)
+```
+
+```{python}
+obj_prep = prep_data('D:/NICMAR Project/DSPS24','train.csv')
+```
+
+```{python}
+import random
+
+class prep_data(object):
+    def __init__(self, root_dir, csv_path):
+        self.root = Path(root_dir)
+        self.df = pd.read_csv(os.path.join(root_dir, csv_path))
+        self.image_names = [os.path.join(self.root, 'train', i) for i in self.df['image_name'].values]
+        self.pci_label = list(self.df['pci'].values)
+        self.train_folder = os.path.join(root_dir, 'yolov8', 'train')
+        self.val_folder = os.path.join(root_dir, 'yolov8', 'val')
+        Path(self.train_folder).mkdir(parents=True, exist_ok=True)
+        Path(self.val_folder).mkdir(parents=True, exist_ok=True)
+
+    def __call__(self, sample):
+        if not sample is None:
+            image, img_path, labels = sample['image'], sample['image_path'], sample['label']
+
+            # Determine the destination folder
+            if random.random() < 0.2:  # 20% chance for validation
+                dst_folder = os.path.join(self.val_folder, str(labels))
+            else:
+                dst_folder = os.path.join(self.train_folder, str(labels))
+
+            Path(dst_folder).mkdir(parents=True, exist_ok=True)
+            fname = os.path.basename(img_path)
+            if not os.path.isfile(os.path.join(dst_folder, fname)):
+                shutil.copy2(img_path, dst_folder)
+
+# Create an instance of prep_data
+obj_prep = prep_data('D:/NICMAR Project/DSPS24','train.csv')
+
+# Assuming pavement_dataset contains all the samples
+for sample in tqdm(pavement_dataset):
+    obj_prep(sample)
+```
+
+
+```{r}
+install.packages("tensorflow")
+```
+```{r}
+library(tensorflow)
+# Enable GPU if available
+tf$device('/device:GPU:0')
+```
+
+```{python}
+model = YOLO('yolov8n-cls.pt')
+# model = YOLO('runs/classify/train3/weights/last.pt')
+# model.train(data='dsps/yolov8', epochs=100)
+
+model.train(data="D:/NICMAR Project/DSPS24/yolov8",epochs=100)
+```
+
+```{python}
+model = YOLO("D:/NICMAR Project/DSPS24/runs/classify/train4/weights/last.pt")
+# model = YOLO('runs/classify/train3/weights/last.pt')
+# model.train(data='dsps/yolov8', epochs=100)
+
+model.train(data="D:/NICMAR Project/DSPS24/yolov8",epochs=100)
+```
+```{python}
+model = YOLO("D:/NICMAR Project/DSPS24/runs/classify/train17/weights/last.pt")
+```
+
+```{python}
+import pandas as pd
+test_path = Path("D:/NICMAR Project/DSPS24/test")
+rows = []
+for tst_img in test_path.glob('**/*.jpg'):
+    preds = model(tst_img)
+    cls_dict = preds[0].names
+    probs = preds[0].probs.data.cpu().numpy()
+    rows.append({'image_name':os.path.basename(tst_img),
+                 'pci':cls_dict[np.argmax(probs)]})
+df_test = pd.DataFrame(rows)
+```
+```{python}
+model_1 = YOLO("D:/NICMAR Project/DSPS24/runs/classify/train11/weights/last.pt")
+```
+
+```{python}
+import pandas as pd
+test_path = Path("D:/NICMAR Project/DSPS24/test")
+rows = []
+for tst_img in test_path.glob('**/*.jpg'):
+    preds = model_1(tst_img)
+    cls_dict = preds[0].names
+    probs = preds[0].probs.data.cpu().numpy()
+    rows.append({'image_name':os.path.basename(tst_img),
+                 'pci':cls_dict[np.argmax(probs)]})
+
+df_test_1 = pd.DataFrame(rows)
+```
+
+```{python}
+import json
+# df: should have two columns - image_name and PCI
+def gen_submit(df):
+  out_json = []
+  for idx, results in df.iterrows():
+    out_json.append({results['image_name']:results['pci']})
+  with open('D:/NICMAR Project/DSPS24/submission_12_modified.json', 'w') as f:
+    json.dump(out_json, f)
+```
+```{python}
+df_test_1['pci'] = df_test_1['pci'].astype(int)
+gen_submit(df_test_1)
+```
+```{python}
+from ultralytics import YOLO
+model = YOLO("D:/NICMAR Project/DSPS24/runs/classify/train4/weights/last.pt")
+# model = YOLO('runs/classify/train3/weights/last.pt')
+# model.train(data='dsps/yolov8', epochs=100)
+
+model.train(data="D:/NICMAR Project/DSPS24/yolov8", epochs=100)
+```
+
+
+
